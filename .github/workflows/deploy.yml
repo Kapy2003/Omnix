@@ -1,0 +1,115 @@
+name: Deploy 3-Tier App
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: omnix_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: npm ci
+
+      - name: Run backend tests (unit + PostgreSQL integration)
+        working-directory: backend
+        env:
+          DATABASE_URL: postgres://postgres:postgres@localhost:5432/omnix_test
+        run: npm test
+
+      - name: Verify frontend script syntax
+        run: |
+          node -e "
+            const fs = require('node:fs');
+            const html = fs.readFileSync('frontend/index.html', 'utf8');
+            const match = html.match(/<script>([\s\S]*?)<\/script>/);
+            if (!match) throw new Error('Missing inline script in frontend/index.html');
+            new Function(match[1]);
+          "
+
+  deploy-frontend:
+    needs: test
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION || 'us-east-1' }}
+
+      - name: Sync frontend to S3
+        run: >
+          aws s3 sync frontend/ "s3://${{ secrets.S3_BUCKET_NAME }}"
+          --delete
+          --cache-control "no-cache, no-store, must-revalidate"
+
+      - name: Invalidate CloudFront cache
+        run: >
+          aws cloudfront create-invalidation
+          --distribution-id "${{ secrets.CLOUDFRONT_DISTRIBUTION_ID }}"
+          --paths "/*"
+
+  deploy-backend:
+    needs: test
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Prepare SSH key
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "${{ secrets.EC2_SSH_KEY }}" | tr -d '\r' > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+
+      - name: Sync backend to EC2 and restart service
+        env:
+          EC2_TARGET: ${{ secrets.EC2_USER || 'ubuntu' }}@${{ secrets.EC2_HOST }}
+        run: |
+          rsync -az --delete --exclude node_modules --exclude .env \
+            -e "ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new" \
+            backend/ "${EC2_TARGET}:/opt/omnix/backend/"
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new "${EC2_TARGET}" \
+            "cd /opt/omnix/backend && npm ci --omit=dev && sudo systemctl restart omnix-api && curl --retry 6 --retry-delay 2 --retry-connrefused -fsS http://127.0.0.1:3000/api/health"
+
+      - name: Clean up SSH key
+        if: always()
+        run: rm -f ~/.ssh/deploy_key
+
