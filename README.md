@@ -51,7 +51,7 @@ Open `http://localhost:8080`.
 5. Note the endpoint, master username, and password.
 
 ### 3. Tier 2 — EC2 Instance
-1. Launch **Ubuntu 24.04 LTS** (`t2.micro` or `t3.micro`, Free Tier) with a `.pem` key pair and `omnix-ec2-sg`.
+1. Launch **Debian 12+ or Ubuntu 24.04 LTS** (`t2.micro` or `t3.micro`, Free Tier) with a `.pem` key pair and `omnix-ec2-sg`.
 2. SSH in and run the bootstrap script once (paste or copy `infra/setup-ec2.sh`):
    ```bash
    sudo bash setup-ec2.sh
@@ -80,7 +80,7 @@ In your GitHub repo (`Settings -> Secrets and variables -> Actions`), add:
 | `S3_BUCKET_NAME` | Target S3 bucket name |
 | `CLOUDFRONT_DISTRIBUTION_ID` | CloudFront distribution ID (e.g. `E1234567890ABC`) |
 | `EC2_HOST` | EC2 Public IPv4 DNS or Elastic IP |
-| `EC2_USER` | Optional; defaults to `ubuntu` (`ec2-user` for Amazon Linux) |
+| `EC2_USER` | Optional; defaults to `ubuntu` (`admin` for Debian, `ec2-user` for Amazon Linux) |
 | `EC2_SSH_KEY` | Full contents of your EC2 `.pem` private key |
 
 Push to `main` to trigger the full test + deploy pipeline.

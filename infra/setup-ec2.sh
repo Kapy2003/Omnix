@@ -10,10 +10,12 @@ DEPLOY_USER="${SUDO_USER:-}"
 if [ -z "$DEPLOY_USER" ] || [ "$DEPLOY_USER" = "root" ]; then
   if id -u ubuntu >/dev/null 2>&1; then
     DEPLOY_USER="ubuntu"
+  elif id -u admin >/dev/null 2>&1; then
+    DEPLOY_USER="admin"
   elif id -u ec2-user >/dev/null 2>&1; then
     DEPLOY_USER="ec2-user"
   else
-    echo "Could not detect ubuntu or ec2-user; set SUDO_USER explicitly."
+    echo "Could not detect ubuntu, admin, or ec2-user; set SUDO_USER explicitly."
     exit 1
   fi
 fi
