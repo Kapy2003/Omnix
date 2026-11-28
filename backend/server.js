@@ -3,38 +3,9 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import express from 'express';
 import pg from 'pg';
 
-if (typeof process.loadEnvFile === 'function') {
-  try {
-    process.loadEnvFile(fileURLToPath(new URL('./.env', import.meta.url)));
-  } catch (err) {
-    if (err?.code !== 'ENOENT') throw err;
-  }
-}
-
 const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
+const parseId = (s) => (/^[1-9]\d*$/.test(s) && Number.isSafeInteger(+s) ? +s : null);
 
-function parseId(raw) {
-  if (!/^\d+$/.test(raw)) return null;
-  const id = Number(raw);
-  return Number.isSafeInteger(id) && id > 0 ? id : null;
-}
-
-function validateTitle(raw) {
-  if (typeof raw !== 'string') return null;
-  const title = raw.trim();
-  return title.length > 0 && title.length <= 200 ? title : null;
-}
-
-function isAllowedOrigin(origin) {
-  if (!origin) return false;
-  if (process.env.CORS_ORIGIN) {
-    return process.env.CORS_ORIGIN.split(',').map((s) => s.trim()).includes(origin);
-  }
-  if (process.env.NODE_ENV === 'production') return false;
-  return origin === 'null' || /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin);
-}
-
-/** Build pg.Pool configuration from environment variables. */
 export function buildPoolConfig() {
   let ssl = false;
   if (process.env.DB_SSL_CA) {
@@ -43,13 +14,9 @@ export function buildPoolConfig() {
     // ponytail: fallback when DB_SSL_CA isn't configured; set DB_SSL_CA to AWS RDS global-bundle.pem in strict prod
     ssl = { rejectUnauthorized: false };
   }
-  return {
-    connectionString: process.env.DATABASE_URL,
-    ssl,
-  };
+  return { connectionString: process.env.DATABASE_URL, ssl };
 }
 
-/** Ensure the items table exists before serving traffic. */
 export async function initDb(db) {
   await db.query(`
     CREATE TABLE IF NOT EXISTS items (
@@ -61,23 +28,14 @@ export async function initDb(db) {
   `);
 }
 
-/** Create the Express application wired to the supplied database pool/client. */
 export function createApp(db) {
   const app = express();
   app.disable('x-powered-by');
   app.use(express.json({ limit: '16kb' }));
 
-  app.use((req, res, next) => {
-    const origin = req.headers.origin;
-    if (isAllowedOrigin(origin)) {
-      res.setHeader('Access-Control-Allow-Origin', origin);
-      res.setHeader('Vary', 'Origin');
-      res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PATCH,DELETE,OPTIONS');
-      res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-    }
-    if (req.method === 'OPTIONS') return res.status(204).end();
-    next();
-  });
+  if (process.env.NODE_ENV !== 'production') {
+    app.use(express.static(fileURLToPath(new URL('../frontend', import.meta.url))));
+  }
 
   app.get('/api/health', async (_req, res) => {
     try {
@@ -102,9 +60,10 @@ export function createApp(db) {
   app.post(
     '/api/items',
     wrap(async (req, res) => {
-      const title = validateTitle(req.body?.title);
-      if (!title) return res.status(400).json({ error: 'title must be 1-200 characters' });
-
+      const title = typeof req.body?.title === 'string' ? req.body.title.trim() : '';
+      if (!title || title.length > 200) {
+        return res.status(400).json({ error: 'title must be 1-200 characters' });
+      }
       const { rows } = await db.query(
         'INSERT INTO items (title) VALUES ($1) RETURNING id, title, done, created_at',
         [title],
@@ -186,4 +145,3 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     process.exit(1);
   });
 }
-

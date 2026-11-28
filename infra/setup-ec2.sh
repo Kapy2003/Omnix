@@ -20,22 +20,17 @@ if [ -z "$DEPLOY_USER" ] || [ "$DEPLOY_USER" = "root" ]; then
   fi
 fi
 
-if command -v apt-get >/dev/null 2>&1; then
-  export DEBIAN_FRONTEND=noninteractive
-  apt-get update -y
-  apt-get install -y ca-certificates curl gnupg rsync
-  if ! command -v node >/dev/null 2>&1 || [ "$(node -p 'process.versions.node.split(".")[0]')" -lt 20 ]; then
-    curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
-    apt-get install -y nodejs
-  fi
-elif command -v dnf >/dev/null 2>&1; then
-  dnf install -y rsync nodejs22
-  if ! command -v curl >/dev/null 2>&1; then
-    dnf install -y curl
-  fi
-else
-  echo "Unsupported OS package manager (expected apt-get or dnf)."
+if ! command -v apt-get >/dev/null 2>&1; then
+  echo "Expected Debian/Ubuntu (apt-get)."
   exit 1
+fi
+
+export DEBIAN_FRONTEND=noninteractive
+apt-get update -y
+apt-get install -y ca-certificates curl gnupg rsync
+if ! command -v node >/dev/null 2>&1 || [ "$(node -p 'process.versions.node.split(".")[0]')" -lt 20 ]; then
+  curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
+  apt-get install -y nodejs
 fi
 
 mkdir -p /opt/omnix/backend

@@ -26,11 +26,7 @@ cd backend
 cp .env.example .env   # edit DATABASE_URL
 npm start
 ```
-In a second terminal, serve the frontend:
-```bash
-python -m http.server 8080 -d frontend
-```
-Open `http://localhost:8080`.
+Open `http://localhost:3000` (in non-production mode the backend serves `frontend/` automatically).
 
 ---
 
@@ -80,7 +76,7 @@ In your GitHub repo (`Settings -> Secrets and variables -> Actions`), add:
 | `S3_BUCKET_NAME` | Target S3 bucket name |
 | `CLOUDFRONT_DISTRIBUTION_ID` | CloudFront distribution ID (e.g. `E1234567890ABC`) |
 | `EC2_HOST` | EC2 Public IPv4 DNS or Elastic IP |
-| `EC2_USER` | Optional; defaults to `ubuntu` (`admin` for Debian, `ec2-user` for Amazon Linux) |
+| `EC2_USER` | Optional; defaults to `ubuntu` (`admin` for Debian) |
 | `EC2_SSH_KEY` | Full contents of your EC2 `.pem` private key |
 
 Push to `main` to trigger the full test + deploy pipeline.

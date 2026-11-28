@@ -109,7 +109,3 @@ jobs:
           ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new "${EC2_TARGET}" \
             "cd /opt/omnix/backend && npm ci --omit=dev && sudo systemctl restart omnix-api && curl --retry 6 --retry-delay 2 --retry-connrefused -fsS http://127.0.0.1:3000/api/health"
 
-      - name: Clean up SSH key
-        if: always()
-        run: rm -f ~/.ssh/deploy_key
-
